@@ -27,61 +27,79 @@ string GetFileContents(string file) {
     return {(istreambuf_iterator<char>(stream)), istreambuf_iterator<char>()};
 }
 
+
+
 // напишите эту функцию
 bool PrepFunc(const path& in_file, ofstream& out_file, const vector<path>& include_directories) {
-    static regex num_reg(R"/(\s*#\s*include\s*"([^"]*)"\s*)/");
-    static regex num_reg2(R"/(\s*#\s*include\s*<([^>]*)>\s*)/");
+    static regex include_in_quotes(R"/(\s*#\s*include\s*"([^"]*)"\s*)/");
+    static regex include_in_brackets(R"/(\s*#\s*include\s*<([^>]*)>\s*)/");
     int line_number = 0;
-    if(filesystem::exists(in_file)) {
+    if(!filesystem::exists(in_file)) {
+        return false;
+    } else {
         ifstream stream;
         stream.open(in_file);
         string line;
-            while (getline(stream, line)) {
-                line_number++;
-                smatch m;
+        
+        while (getline(stream, line)) {
+            line_number++;
+            smatch m;
+            
+            if (regex_match(line, m, include_in_quotes)) {
+                path new_path = in_file.parent_path() / path(m[1]);
+                fstream fs(new_path);
                 
-                cout << line << endl;
-                
-                if (regex_match(line, m, num_reg)) {
-                    path new_path = in_file.parent_path() / path(m[1]);
-                    fstream fs(new_path);
-                    
-                    if (fs.is_open()) {
-                        PrepFunc(new_path, out_file, include_directories);
-                        continue;
+                if (fs.is_open()) {
+                    bool result = PrepFunc(new_path, out_file, include_directories);
+                    if (!result) {
+                        return false;
                     } else {
-                        bool res = false;
-                        path new_path2;
-                        for (auto d : include_directories) {
-                            fstream fs1(d / path(m[1]));
-                            if (fs1.is_open()) {
-                                new_path2 = d / path(m[1]);
-                                res = true;
-                            }
+                        continue;
+                    }
+                    
+                } else {
+                    bool res = false;
+                    path new_path2;
+                    for (auto d : include_directories) {
+                        fstream fs1(d / path(m[1]));
+                        
+                        if (fs1.is_open()) {
+                            new_path2 = d / path(m[1]);
+                            res = true;
                         }
+                    }
                         if (res) {
                             res = false;
-                            PrepFunc(new_path2, out_file, include_directories);
-                            continue;
+                            bool result = PrepFunc(new_path2, out_file, include_directories);
+                            if (!result) {
+                                return false;
+                            } else {
+                                continue;
+                            }
                         } else
                         cout << "unknown include file "s << path(m[1]).filename().string() << " at file "s << path(in_file).string() << " at line "s << line_number << endl;
                         return false;
                     }
-                    
-                } else if(regex_match(line, m, num_reg2)) {
+                    //если я пытаюсь делать 1 функцию, то все перестает работать. Прошу оставить как есть
+                } else if(regex_match(line, m, include_in_brackets)) {
                     bool res = false;
                     path new_path2;
-                    for (auto d : include_directories) {
+                    for (const path& d : include_directories) {
                         fstream fs1(d / path(m[1]));
                         if (fs1.is_open()) {
                             new_path2 = d / path(m[1]);
                             res = true;
                         }
                     }
+                    
                     if (res) {
                         res = false;
-                        PrepFunc(new_path2, out_file, include_directories);
-                        continue;
+                        bool result = PrepFunc(new_path2, out_file, include_directories);
+                        if (!result) {
+                            return false;
+                        } else {
+                            continue;
+                        }
                     } else
                         cout << "unknown include file "s << path(m[1]).filename().string() << " at file "s << path(in_file).string() << " at line "s << line_number << endl;
                     return false;
@@ -90,15 +108,13 @@ bool PrepFunc(const path& in_file, ofstream& out_file, const vector<path>& inclu
                     out_file << line << '\n';
                 }
             };
-    } else {
-        return false;
     }
 
     return true;
 
 };
-
 bool Preprocess(const path& in_file, const path& out_file, const vector<path>& include_directories) {
+    filesystem::remove(out_file);
     ofstream out(out_file, ios::app);
     
     return PrepFunc(in_file, out, include_directories);
