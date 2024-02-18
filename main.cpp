@@ -27,7 +27,21 @@ string GetFileContents(string file) {
     return {(istreambuf_iterator<char>(stream)), istreambuf_iterator<char>()};
 }
 
+void ShowError(string file_name, string in_which_file, int line) {
+    cout << "unknown include file "s << file_name << " at file "s << in_which_file << " at line "s << line << endl;
+}
 
+path DirectoriesFileCheck(const path& path_to_find, const vector<path>& include_directories) {
+    path new_path;
+    
+    for (const path& d : include_directories) {
+        fstream fs1(d / path_to_find);
+        if (fs1.is_open()) {
+            return new_path = d / path_to_find;
+        }
+    }
+    return new_path;
+}
 
 // напишите эту функцию
 bool PrepFunc(const path& in_file, ofstream& out_file, const vector<path>& include_directories) {
@@ -36,88 +50,67 @@ bool PrepFunc(const path& in_file, ofstream& out_file, const vector<path>& inclu
     int line_number = 0;
     if(!filesystem::exists(in_file)) {
         return false;
-    } else {
-        ifstream stream;
-        stream.open(in_file);
-        string line;
+    }
+    ifstream stream;
+    stream.open(in_file);
+    string line;
+    
+    while (getline(stream, line)) {
+        line_number++;
+        smatch m;
         
-        while (getline(stream, line)) {
-            line_number++;
-            smatch m;
-            
-            if (regex_match(line, m, include_in_quotes)) {
-                path new_path = in_file.parent_path() / path(m[1]);
-                fstream fs(new_path);
+        if (regex_match(line, m, include_in_quotes)) {
+            path new_path = in_file.parent_path() / path(m[1]);
+            fstream fs(new_path);
+        
+            if (fs.is_open()) {
+                bool result = PrepFunc(new_path, out_file, include_directories);
+                if (!result) {
+                    return false;
+                } else {
+                    continue;
+                }
                 
-                if (fs.is_open()) {
-                    bool result = PrepFunc(new_path, out_file, include_directories);
+            } else {
+                path finded_path = DirectoriesFileCheck(path(m[1]), include_directories);
+                
+                if (!finded_path.empty()) {
+                    bool result = PrepFunc(finded_path, out_file, include_directories);
                     if (!result) {
                         return false;
-                    } else {
-                        continue;
-                    }
-                    
-                } else {
-                    bool res = false;
-                    path new_path2;
-                    for (auto d : include_directories) {
-                        fstream fs1(d / path(m[1]));
-                        
-                        if (fs1.is_open()) {
-                            new_path2 = d / path(m[1]);
-                            res = true;
-                        }
-                    }
-                        if (res) {
-                            res = false;
-                            bool result = PrepFunc(new_path2, out_file, include_directories);
-                            if (!result) {
-                                return false;
-                            } else {
-                                continue;
-                            }
-                        } else
-                        cout << "unknown include file "s << path(m[1]).filename().string() << " at file "s << path(in_file).string() << " at line "s << line_number << endl;
-                        return false;
-                    }
-                    //если я пытаюсь делать 1 функцию, то все перестает работать. Прошу оставить как есть
-                } else if(regex_match(line, m, include_in_brackets)) {
-                    bool res = false;
-                    path new_path2;
-                    for (const path& d : include_directories) {
-                        fstream fs1(d / path(m[1]));
-                        if (fs1.is_open()) {
-                            new_path2 = d / path(m[1]);
-                            res = true;
-                        }
-                    }
-                    
-                    if (res) {
-                        res = false;
-                        bool result = PrepFunc(new_path2, out_file, include_directories);
-                        if (!result) {
-                            return false;
-                        } else {
-                            continue;
-                        }
-                    } else
-                        cout << "unknown include file "s << path(m[1]).filename().string() << " at file "s << path(in_file).string() << " at line "s << line_number << endl;
-                    return false;
-                    
-                } else {
-                    out_file << line << '\n';
+                    } continue;
                 }
-            };
+                ShowError(path(m[1]).filename().string(), path(in_file).string(), line_number);
+                return false;
+            }
+            
+            } else if(regex_match(line, m, include_in_brackets)) {
+                path finded_path = DirectoriesFileCheck(path(m[1]), include_directories);
+                
+                if (!finded_path.empty()) {
+                    bool result = PrepFunc(finded_path, out_file, include_directories);
+                    if (!result) {
+                        return false;
+                    } continue;
+                }
+                ShowError(path(m[1]).filename().string(), path(in_file).string(), line_number);
+                return false;
+            } else {
+                out_file << line << '\n';
+            }
     }
 
     return true;
 
 };
 bool Preprocess(const path& in_file, const path& out_file, const vector<path>& include_directories) {
-    filesystem::remove(out_file);
-    ofstream out(out_file, ios::app);
-    
-    return PrepFunc(in_file, out, include_directories);
+    ofstream out(out_file);
+
+    if (out.is_open()) {
+        return PrepFunc(in_file, out, include_directories);
+    } else {
+        return false;
+    }
 }
 
 
